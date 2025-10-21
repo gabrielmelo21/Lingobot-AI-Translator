@@ -58,6 +58,7 @@ fun StudyScreen(
     var isRequestSent by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableStateOf(0L) }
     var showAiResponse by remember { mutableStateOf(false) }
+    var hasVideoStartedSecondSegment by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
@@ -76,12 +77,18 @@ fun StudyScreen(
 
     LaunchedEffect(currentPartIndex, isRequestSent) {
         if (isRequestSent) {
-            exoPlayer.seekTo(19800)
+            // Only seek to 19800 if it hasn't started yet
+            if (!hasVideoStartedSecondSegment) {
+                exoPlayer.seekTo(19800)
+                exoPlayer.play() // Play here, as it's the initial start of the second segment
+                hasVideoStartedSecondSegment = true
+            }
         } else {
             exoPlayer.seekTo(0)
             showAiResponse = false // Reset showAiResponse when isRequestSent is false
+            hasVideoStartedSecondSegment = false // Reset when returning to first segment
+            exoPlayer.play() // Play here, as it's the initial start of the first segment
         }
-        exoPlayer.play()
     }
 
 
@@ -94,13 +101,13 @@ fun StudyScreen(
                 if (exoPlayer.currentPosition >= 31000) {
                     exoPlayer.pause()
                     showAiResponse = true // Set to true when video reaches 31 seconds
-                } else if (!exoPlayer.isPlaying) {
+                } else if (!exoPlayer.isPlaying && exoPlayer.currentPosition < 31000) {
                     exoPlayer.play()
                 }
             } else {
                 if (exoPlayer.currentPosition >= 19800) {
                     exoPlayer.pause()
-                } else if (!exoPlayer.isPlaying) {
+                } else if (!exoPlayer.isPlaying && exoPlayer.currentPosition < 19800) {
                     exoPlayer.play()
                 }
             }
@@ -193,6 +200,7 @@ fun StudyScreen(
                                 isRequestSent = false
                                 showAiResponse = false
                                 currentPartIndex = 0
+                                exoPlayer.play() // Start playing the first segment
                             }
                         },
                         enabled = true // Always enabled to allow resetting
@@ -251,8 +259,6 @@ fun StudyScreen(
                                                     """.trimIndent()
                                 viewModel.sendPrompt(prompt)
                                 isRequestSent = true // Set to true after sending request
-                                exoPlayer.seekTo(19800) // Seek to 19.8s
-                                exoPlayer.play() // Start playing
                                 subject = "" // Clear the input field
                             }
                         )
