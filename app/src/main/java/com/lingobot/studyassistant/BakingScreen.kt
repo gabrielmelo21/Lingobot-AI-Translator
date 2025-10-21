@@ -74,6 +74,7 @@ fun StudyScreen(
     }
 
     val mediaPlayer = remember { MediaPlayer.create(context, R.raw.button_sound) }
+    val mediaPlayerArrow = remember { MediaPlayer.create(context, R.raw.button_sound2) }
 
     LaunchedEffect(currentPartIndex, isRequestSent) {
         if (isRequestSent) {
@@ -123,6 +124,7 @@ fun StudyScreen(
         onDispose {
             exoPlayer.release()
             mediaPlayer.release() // Release the media player
+            mediaPlayerArrow.release() // Release the arrow media player
         }
     }
 
@@ -173,45 +175,169 @@ fun StudyScreen(
             if (conversationParts.isNotEmpty() && showAiResponse) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        .offset(y = (-80).dp), // Move the content up by 80.dp
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = when (currentPartIndex) {
-                            0 -> "Your Answer"
-                            1 -> "Example 1"
-                            else -> "Example 2"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
 
-                    Text(
-                        text = conversationParts[currentPartIndex],
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFD700),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                                        Text(
 
-                    Button(
-                        onClick = {
-                            if (currentPartIndex < conversationParts.lastIndex) {
-                                currentPartIndex++
-                            } else {
-                                isRequestSent = false
-                                showAiResponse = false
-                                currentPartIndex = 0
-                                exoPlayer.play() // Start playing the first segment
-                            }
-                        },
-                        enabled = true // Always enabled to allow resetting
-                    ) {
-                        Text(if (currentPartIndex < conversationParts.lastIndex) "Próximo" else "Fim")
-                    }
-                }
+                                            text = conversationParts[currentPartIndex],
+
+                                            fontSize = 24.sp,
+
+                                            fontWeight = FontWeight.Bold,
+
+                                            color = Color(0xFFFFFFFF),
+
+                                            textAlign = TextAlign.Center,
+
+                                            modifier = Modifier.padding(bottom = 12.dp)
+
+                                        )
+
+                                    }
+
+                    
+
+                                                    // Left Arrow
+
+                    
+
+                                                    Image(
+
+                    
+
+                                                        painter = painterResource(id = R.drawable.left_arrow),
+
+                    
+
+                                                        contentDescription = "Previous",
+
+                    
+
+                                                        modifier = Modifier
+
+                    
+
+                                                            .align(Alignment.BottomStart)
+
+                    
+
+                                                            .padding(16.dp)
+
+                    
+
+                                                            .size(48.dp) // Set size to 48.dp
+
+                    
+
+                                                                                    .clickable(enabled = currentPartIndex > 0) {
+
+                    
+
+                                                                                        mediaPlayerArrow.start() // Play arrow sound
+
+                    
+
+                                                                                        currentPartIndex--
+
+                    
+
+                                                                                    }
+
+                    
+
+                                                            .alpha(if (currentPartIndex > 0) 1f else 0.5f)
+
+                    
+
+                                                    )
+
+                    
+
+                                                    // Right Arrow
+
+                    
+
+                                                    Image(
+
+                    
+
+                                                        painter = painterResource(id = R.drawable.right_arrow),
+
+                    
+
+                                                        contentDescription = "Next",
+
+                    
+
+                                                        modifier = Modifier
+
+                    
+
+                                                            .align(Alignment.BottomEnd)
+
+                    
+
+                                                            .padding(16.dp)
+
+                    
+
+                                                            .size(48.dp) // Set size to 48.dp
+
+                    
+
+                                                                                    .clickable(enabled = true) { // Always enabled to allow resetting
+
+                    
+
+                                                                                        mediaPlayerArrow.start() // Play arrow sound
+
+                    
+
+                                                                                        if (currentPartIndex < conversationParts.lastIndex) {
+
+                    
+
+                                                                                            currentPartIndex++
+
+                    
+
+                                                                                        } else {
+
+                    
+
+                                                                                            isRequestSent = false
+
+                    
+
+                                                                                            showAiResponse = false
+
+                    
+
+                                                                                            currentPartIndex = 0
+
+                    
+
+                                                                                            exoPlayer.play() // Start playing the first segment
+
+                    
+
+                                                                                        }
+
+                    
+
+                                                                                    }
+
+                    
+
+                                                            .alpha(if (currentPartIndex < conversationParts.lastIndex) 1f else 0.5f) // Alpha for visual feedback
+
+                    
+
+                                                    )
             }
 
             // This is the input area
@@ -249,19 +375,21 @@ fun StudyScreen(
                             .clickable(enabled = isSendButtonEnabled) { // Control clickability
                                 mediaPlayer.start() // Play the sound
                                 val prompt = """
-                                                        You are an AI language learning assistant. Your goal is to explain things in English in a clear and concise way.
-                                                        The user will ask a question, and you should provide a direct answer and two examples of use.
-                                                        Return the response in the following JSON format:
-                            
-                                                        {
-                                                          \"direct_answer\": \"The direct answer to the user's question.\",
-                                                          \"example_1\": \"An example of how to use the answer in a sentence.\",
-                                                          \"example_2\": \"Another example of how to use the answer in a sentence.\"
-                                                        }
-                            
-                                                        Question: $subject
-                                                    """.trimIndent()
+Você é um assistente de idiomas que traduz e explica expressões em inglês de forma simples.
+Entenda o que o usuário quer (tradução, significado ou uso) e responda sempre em português.
+
+Responda exatamente neste formato JSON:
+{
+  "direct_answer": "Explique ou traduza em português o que o usuário pediu.",
+  "example_1": "Frase em inglês. (Tradução em português.)",
+  "example_2": "Outra frase em inglês. (Tradução em português.)"
+}
+
+Pergunta: $subject
+""".trimIndent()
+
                                 viewModel.sendPrompt(prompt)
+
                                 isRequestSent = true // Set to true after sending request
                                 subject = "" // Clear the input field
                             }
