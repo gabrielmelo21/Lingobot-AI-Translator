@@ -57,7 +57,7 @@ fun StudyScreen(
     var currentPartIndex by remember { mutableStateOf(0) }
     var isRequestSent by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableStateOf(0L) }
-    var isPlayingResponseVideo by remember { mutableStateOf(false) }
+    var showAiResponse by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
@@ -74,22 +74,36 @@ fun StudyScreen(
 
     val mediaPlayer = remember { MediaPlayer.create(context, R.raw.button_sound) }
 
+    LaunchedEffect(currentPartIndex, isRequestSent) {
+        if (isRequestSent) {
+            exoPlayer.seekTo(19800)
+        } else {
+            exoPlayer.seekTo(0)
+            showAiResponse = false // Reset showAiResponse when isRequestSent is false
+        }
+        exoPlayer.play()
+    }
 
 
-    LaunchedEffect(exoPlayer, isRequestSent, isPlayingResponseVideo) {
+
+    LaunchedEffect(exoPlayer, isRequestSent) {
         while (true) {
             currentPosition = exoPlayer.currentPosition
-            if (isPlayingResponseVideo) { // If playing response video segment
+            println("isRequestSent: $isRequestSent, currentPosition: $currentPosition")
+            if (isRequestSent) {
                 if (exoPlayer.currentPosition >= 31000) {
                     exoPlayer.pause()
-                    isPlayingResponseVideo = false // Reset after pausing
+                    showAiResponse = true // Set to true when video reaches 31 seconds
+                } else if (!exoPlayer.isPlaying) {
+                    exoPlayer.play()
                 }
-            } else if (!isRequestSent) { // If no request is sent (intro segment)
+            } else {
                 if (exoPlayer.currentPosition >= 19800) {
                     exoPlayer.pause()
+                } else if (!exoPlayer.isPlaying) {
+                    exoPlayer.play()
                 }
             }
-            // If isRequestSent is true, and not playing response video, then video should be paused at 19.8s.
             kotlinx.coroutines.delay(100)
         }
     }
@@ -115,17 +129,9 @@ fun StudyScreen(
                 parts.add(jsonObject.getString("example_2"))
                 conversationParts = parts
                 currentPartIndex = 0
-                isRequestSent = false // Reset isRequestSent
-                isPlayingResponseVideo = true // Start playing response video segment
-                exoPlayer.seekTo(19800) // Seek to 19.8s
-                exoPlayer.play() // Start playing
             } catch (e: Exception) {
                 conversationParts = listOf("Erro ao processar a resposta da IA.")
                 currentPartIndex = 0
-                isRequestSent = false // Reset isRequestSent even on error
-                isPlayingResponseVideo = true // Start playing response video segment
-                exoPlayer.seekTo(19800) // Seek to 19.8s
-                exoPlayer.play() // Start playing
             }
         }
     }
@@ -153,7 +159,7 @@ fun StudyScreen(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            if (conversationParts.isNotEmpty() && currentPosition >= 31000) {
+            if (conversationParts.isNotEmpty() && showAiResponse) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize(),
@@ -180,8 +186,16 @@ fun StudyScreen(
                     )
 
                     Button(
-                        onClick = { currentPartIndex++ },
-                        enabled = currentPartIndex < conversationParts.lastIndex
+                        onClick = {
+                            if (currentPartIndex < conversationParts.lastIndex) {
+                                currentPartIndex++
+                            } else {
+                                isRequestSent = false
+                                showAiResponse = false
+                                currentPartIndex = 0
+                            }
+                        },
+                        enabled = true // Always enabled to allow resetting
                     ) {
                         Text(if (currentPartIndex < conversationParts.lastIndex) "Próximo" else "Fim")
                     }
@@ -237,6 +251,8 @@ fun StudyScreen(
                                                     """.trimIndent()
                                 viewModel.sendPrompt(prompt)
                                 isRequestSent = true // Set to true after sending request
+                                exoPlayer.seekTo(19800) // Seek to 19.8s
+                                exoPlayer.play() // Start playing
                                 subject = "" // Clear the input field
                             }
                         )
