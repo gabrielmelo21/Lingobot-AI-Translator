@@ -59,19 +59,14 @@ fun StudyScreen(
     }
 
     LaunchedEffect(currentPartIndex) {
-        when (currentPartIndex) {
-            0 -> exoPlayer.seekTo(0)
-            1 -> exoPlayer.seekTo(6000)
-            2 -> exoPlayer.seekTo(11000)
-        }
+        exoPlayer.seekTo(0)
+        exoPlayer.play()
     }
 
     LaunchedEffect(exoPlayer) {
         while (true) {
-            when (currentPartIndex) {
-                0 -> if (exoPlayer.currentPosition >= 5000) exoPlayer.pause()
-                1 -> if (exoPlayer.currentPosition >= 10000) exoPlayer.pause()
-                2 -> if (exoPlayer.currentPosition >= 15000) exoPlayer.pause()
+            if (exoPlayer.currentPosition >= 19800) {
+                exoPlayer.pause()
             }
             kotlinx.coroutines.delay(100)
         }
