@@ -98,9 +98,13 @@ fun StudyScreen(
             currentPosition = exoPlayer.currentPosition
             println("isRequestSent: $isRequestSent, currentPosition: $currentPosition")
             if (isRequestSent) {
+                // Show AI response at 27 seconds
+                if (exoPlayer.currentPosition >= 27000 && !showAiResponse) { // Only set once
+                    showAiResponse = true
+                }
+                // Pause video at 31 seconds
                 if (exoPlayer.currentPosition >= 31000) {
                     exoPlayer.pause()
-                    showAiResponse = true // Set to true when video reaches 31 seconds
                 } else if (!exoPlayer.isPlaying && exoPlayer.currentPosition < 31000) {
                     exoPlayer.play()
                 }
