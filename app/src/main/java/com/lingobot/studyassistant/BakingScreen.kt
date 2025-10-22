@@ -33,6 +33,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun VideoPlayer(exoPlayer: ExoPlayer) {
@@ -58,17 +59,14 @@ fun StudyScreen(
     var isRequestSent by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableStateOf(0L) }
     var showAiResponse by remember { mutableStateOf(false) }
-    var hasVideoStartedSecondSegment by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
-    val scale = remember { Animatable(1f) }
 
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.parse("android.resource://${context.packageName}/${R.raw.main_video}")))
             prepare()
-            playWhenReady = true
             repeatMode = Player.REPEAT_MODE_ONE
         }
     }
@@ -76,59 +74,83 @@ fun StudyScreen(
     val mediaPlayer = remember { MediaPlayer.create(context, R.raw.button_sound) }
     val mediaPlayerArrow = remember { MediaPlayer.create(context, R.raw.button_sound2) }
 
-    LaunchedEffect(currentPartIndex, isRequestSent) {
+    // Gerenciar transições de vídeo de forma mais eficiente
+    LaunchedEffect(isRequestSent) {
         if (isRequestSent) {
-            // Only seek to 19800 if it hasn't started yet
-            if (!hasVideoStartedSecondSegment) {
-                exoPlayer.seekTo(19800)
-                exoPlayer.play() // Play here, as it's the initial start of the second segment
-                hasVideoStartedSecondSegment = true
-            }
+            exoPlayer.pause()
+            exoPlayer.seekTo(19800)
+            // Aguarda o seek completar antes de tocar
+            kotlinx.coroutines.delay(100)
+            exoPlayer.play()
         } else {
+            exoPlayer.pause()
             exoPlayer.seekTo(0)
-            showAiResponse = false // Reset showAiResponse when isRequestSent is false
-            hasVideoStartedSecondSegment = false // Reset when returning to first segment
-            exoPlayer.play() // Play here, as it's the initial start of the first segment
+            showAiResponse = false
+            kotlinx.coroutines.delay(100)
+            exoPlayer.play()
         }
     }
 
-
-
-    LaunchedEffect(exoPlayer, isRequestSent) {
-        while (true) {
-            currentPosition = exoPlayer.currentPosition
-            println("isRequestSent: $isRequestSent, currentPosition: $currentPosition")
-            if (isRequestSent) {
-                // Show AI response at 27 seconds
-                if (exoPlayer.currentPosition >= 27000 && !showAiResponse) { // Only set once
-                    showAiResponse = true
-                }
-                // Pause video at 31 seconds
-                if (exoPlayer.currentPosition >= 31000) {
-                    exoPlayer.pause()
-                } else if (!exoPlayer.isPlaying && exoPlayer.currentPosition < 31000) {
-                    exoPlayer.play()
-                }
-            } else {
-                if (exoPlayer.currentPosition >= 19800) {
-                    exoPlayer.pause()
-                } else if (!exoPlayer.isPlaying && exoPlayer.currentPosition < 19800) {
-                    exoPlayer.play()
+    // Usar listener do player ao invés de polling
+    DisposableEffect(exoPlayer, isRequestSent) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    currentPosition = exoPlayer.currentPosition
                 }
             }
-            kotlinx.coroutines.delay(100)
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                currentPosition = exoPlayer.currentPosition
+            }
+        }
+
+        exoPlayer.addListener(listener)
+
+        // Corrotina para controlar pausas em pontos específicos
+        val job = scope.launch {
+            while (true) {
+                currentPosition = exoPlayer.currentPosition
+
+                if (isRequestSent) {
+                    // Mostrar resposta AI aos 27 segundos
+                    if (currentPosition >= 27000 && !showAiResponse) {
+                        showAiResponse = true
+                    }
+                    // Pausar aos 31 segundos
+                    if (currentPosition >= 31000 && exoPlayer.isPlaying) {
+                        exoPlayer.pause()
+                    }
+                } else {
+                    // Pausar aos 19.8 segundos
+                    if (currentPosition >= 19800 && exoPlayer.isPlaying) {
+                        exoPlayer.pause()
+                    }
+                }
+
+                kotlinx.coroutines.delay(200) // Aumentado para 200ms
+            }
+        }
+
+        onDispose {
+            job.cancel()
+            exoPlayer.removeListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer.release()
-            mediaPlayer.release() // Release the media player
-            mediaPlayerArrow.release() // Release the arrow media player
+            mediaPlayer.release()
+            mediaPlayerArrow.release()
         }
     }
 
-    // Parsing da resposta feito apenas uma vez quando uiState for Success
+    // Parsing da resposta
     LaunchedEffect(uiState) {
         if (uiState is UiState.Success) {
             val output = (uiState as UiState.Success).outputText
@@ -137,7 +159,9 @@ fun StudyScreen(
                 val jsonObject = JSONObject(cleanOutput)
 
                 val parts = mutableListOf<String>()
-                parts.add(jsonObject.getString("direct_answer"))
+                parts.add(jsonObject.getString("meaning"))
+                parts.add(jsonObject.getString("usage"))
+                parts.add(jsonObject.getString("notes"))
                 parts.add(jsonObject.getString("example_1"))
                 parts.add(jsonObject.getString("example_2"))
                 conversationParts = parts
@@ -158,15 +182,6 @@ fun StudyScreen(
         )
         VideoPlayer(exoPlayer = exoPlayer)
 
-        Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(id = R.drawable.poster),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-        VideoPlayer(exoPlayer = exoPlayer)
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -176,172 +191,91 @@ fun StudyScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset(y = (-80).dp), // Move the content up by 80.dp
+                        .offset(y = (-80).dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-
-                                        Text(
-
-                                            text = conversationParts[currentPartIndex],
-
-                                            fontSize = 24.sp,
-
-                                            fontWeight = FontWeight.Bold,
-
-                                            color = Color(0xFFFFFFFF),
-
-                                            textAlign = TextAlign.Center,
-
-                                            modifier = Modifier.padding(bottom = 12.dp)
-
-                                        )
-
-                                    }
-
-                    
-
-                                                    // Left Arrow
-
-                    
-
-                                                    Image(
-
-                    
-
-                                                        painter = painterResource(id = R.drawable.left_arrow),
-
-                    
-
-                                                        contentDescription = "Previous",
-
-                    
-
-                                                        modifier = Modifier
-
-                    
-
-                                                            .align(Alignment.BottomStart)
-
-                    
-
-                                                            .padding(16.dp)
-
-                    
-
-                                                            .size(48.dp) // Set size to 48.dp
-
-                    
-
-                                                                                    .clickable(enabled = currentPartIndex > 0) {
-
-                    
-
-                                                                                        mediaPlayerArrow.start() // Play arrow sound
-
-                    
-
-                                                                                        currentPartIndex--
-
-                    
-
-                                                                                    }
-
-                    
-
-                                                            .alpha(if (currentPartIndex > 0) 1f else 0.5f)
-
-                    
-
-                                                    )
-
-                    
-
-                                                    // Right Arrow
-
-                    
-
-                                                    Image(
-
-                    
-
-                                                        painter = painterResource(id = R.drawable.right_arrow),
-
-                    
-
-                                                        contentDescription = "Next",
-
-                    
-
-                                                        modifier = Modifier
-
-                    
-
-                                                            .align(Alignment.BottomEnd)
-
-                    
-
-                                                            .padding(16.dp)
-
-                    
-
-                                                            .size(48.dp) // Set size to 48.dp
-
-                    
-
-                                                                                    .clickable(enabled = true) { // Always enabled to allow resetting
-
-                    
-
-                                                                                        mediaPlayerArrow.start() // Play arrow sound
-
-                    
-
-                                                                                        if (currentPartIndex < conversationParts.lastIndex) {
-
-                    
-
-                                                                                            currentPartIndex++
-
-                    
-
-                                                                                        } else {
-
-                    
-
-                                                                                            isRequestSent = false
-
-                    
-
-                                                                                            showAiResponse = false
-
-                    
-
-                                                                                            currentPartIndex = 0
-
-                    
-
-                                                                                            exoPlayer.play() // Start playing the first segment
-
-                    
-
-                                                                                        }
-
-                    
-
-                                                                                    }
-
-                    
-
-                                                            .alpha(if (currentPartIndex < conversationParts.lastIndex) 1f else 0.5f) // Alpha for visual feedback
-
-                    
-
-                                                    )
+                    Text(
+                        text = when (currentPartIndex) {
+                            0 -> "Meaning"
+                            1 -> "Usage"
+                            2 -> "Notes"
+                            3 -> "Example 1"
+                            else -> "Example 2"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Text(
+                        text = conversationParts[currentPartIndex],
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFFFFF),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+
+                // Left Arrow
+                Image(
+                    painter = painterResource(id = R.drawable.left_arrow),
+                    contentDescription = "Previous",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                        .size(48.dp)
+                        .clickable(enabled = currentPartIndex > 0) {
+                            mediaPlayerArrow.start()
+                            currentPartIndex--
+                        }
+                        .alpha(if (currentPartIndex > 0) 1f else 0.5f)
+                )
+
+                // Right Arrow
+                Image(
+                    painter = painterResource(id = R.drawable.right_arrow),
+                    contentDescription = "Next",
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .size(48.dp)
+                        .clickable(enabled = true) {
+                            mediaPlayerArrow.start()
+                            if (currentPartIndex < conversationParts.lastIndex) {
+                                currentPartIndex++
+                            } else {
+                                isRequestSent = false
+                                currentPartIndex = 0
+                            }
+                        }
+                        .alpha(if (currentPartIndex < conversationParts.lastIndex) 1f else 0.5f)
+                )
             }
 
-            // This is the input area
-            if (!isRequestSent) { // Show input field if no request sent
+            // Skip Button
+            if (!isRequestSent && currentPosition < 19000) {
+                Image(
+                    painter = painterResource(id = R.drawable.skip_button),
+                    contentDescription = "Skip Intro",
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .size(64.dp) // Increased size to 64.dp
+                        .clickable {
+                            mediaPlayerArrow.start()
+                            scope.launch {
+                                exoPlayer.pause()
+                                exoPlayer.seekTo(19800)
+                                kotlinx.coroutines.delay(100)
+                                exoPlayer.play()
+                            }
+                        }
+                )
+            }
+
+            // Input area
+            if (!isRequestSent) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -358,6 +292,10 @@ fun StudyScreen(
                             disabledContainerColor = Color.White,
                             unfocusedIndicatorColor = Color.Transparent,
                             focusedIndicatorColor = Color.Transparent,
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            focusedLabelColor = Color.Black,
+                            unfocusedLabelColor = Color.Black,
                         ),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
@@ -371,16 +309,21 @@ fun StudyScreen(
                         contentDescription = "Send",
                         modifier = Modifier
                             .height(56.dp)
-                            .alpha(if (isSendButtonEnabled) 1f else 0.5f) // Change alpha for visual feedback
-                            .clickable(enabled = isSendButtonEnabled) { // Control clickability
-                                mediaPlayer.start() // Play the sound
+                            .alpha(if (isSendButtonEnabled) 1f else 0.5f)
+                            .clickable(enabled = isSendButtonEnabled) {
+                                mediaPlayer.start()
                                 val prompt = """
-Você é um assistente de idiomas que traduz e explica expressões em inglês de forma simples.
-Entenda o que o usuário quer (tradução, significado ou uso) e responda sempre em português.
+Você é um assistente de idiomas que traduz e explica expressões em inglês de forma clara e curta.
+O usuário pode pedir tradução, significado ou uso de uma palavra ou expressão.
+Responda sempre em português.
 
-Responda exatamente neste formato JSON:
+Cada campo deve ter no máximo 200 caracteres.
+
+Retorne exatamente neste formato JSON:
 {
-  "direct_answer": "Explique ou traduza em português o que o usuário pediu.",
+  "meaning": "Tradução direta ou explicação curta do termo",
+  "usage": "Explique o uso, contexto ou sentido figurado",
+  "notes": "Observações gramaticais, curiosidades ou diferenças culturais",
   "example_1": "Frase em inglês. (Tradução em português.)",
   "example_2": "Outra frase em inglês. (Tradução em português.)"
 }
@@ -389,12 +332,10 @@ Pergunta: $subject
 """.trimIndent()
 
                                 viewModel.sendPrompt(prompt)
-
-                                isRequestSent = true // Set to true after sending request
-                                subject = "" // Clear the input field
+                                isRequestSent = true
+                                subject = ""
                             }
-                        )
-                    }
+                    )
                 }
             }
         }
