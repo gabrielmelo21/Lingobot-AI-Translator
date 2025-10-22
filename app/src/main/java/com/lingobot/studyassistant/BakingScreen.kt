@@ -84,7 +84,6 @@ fun StudyScreen(
             exoPlayer.play()
         } else {
             exoPlayer.pause()
-            exoPlayer.seekTo(0)
             showAiResponse = false
             kotlinx.coroutines.delay(100)
             exoPlayer.play()
@@ -132,7 +131,7 @@ fun StudyScreen(
                     }
                 }
 
-                kotlinx.coroutines.delay(200) // Aumentado para 200ms
+                kotlinx.coroutines.delay(50)
             }
         }
 
@@ -241,17 +240,39 @@ fun StudyScreen(
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
                         .size(48.dp)
-                        .clickable(enabled = true) {
+                        .clickable(enabled = currentPartIndex < conversationParts.lastIndex) {
                             mediaPlayerArrow.start()
-                            if (currentPartIndex < conversationParts.lastIndex) {
-                                currentPartIndex++
-                            } else {
-                                isRequestSent = false
-                                currentPartIndex = 0
-                            }
+                            currentPartIndex++
                         }
                         .alpha(if (currentPartIndex < conversationParts.lastIndex) 1f else 0.5f)
                 )
+
+                // New Chat Button
+                if (currentPartIndex == conversationParts.lastIndex) {
+                    Image(
+                        painter = painterResource(id = R.drawable.new_chat),
+                        contentDescription = "New Chat",
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                            .size(64.dp)
+                            .clickable {
+                                mediaPlayer.start()
+                                // Resetar estados diretamente
+                                showAiResponse = false
+                                currentPartIndex = 0
+                                conversationParts = emptyList()
+                                subject = ""
+                                isRequestSent = false
+                                viewModel.sendPrompt("")
+                                // Manter isRequestSent = true para manter na posição 19.8s
+                                scope.launch {
+                                    exoPlayer.pause()
+                                    exoPlayer.seekTo(19800)
+                                }
+                            }
+                    )
+                }
             }
 
             // Skip Button
@@ -342,7 +363,4 @@ Pergunta: $subject
         }
     }
 }
-
-
-
 
