@@ -65,7 +65,7 @@ fun StudyScreen(
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse("android.resource://${context.packageName}/${R.raw.main_video}")))
+            setMediaItem(MediaItem.fromUri(Uri.parse("android.resource://${context.packageName}/${R.raw.main_video_v3}")))
             prepare()
             repeatMode = Player.REPEAT_MODE_ONE
         }
@@ -204,7 +204,8 @@ fun StudyScreen(
                             else -> "Example 2"
                         },
                         style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        color = Color(0xFFFFFFFF),
                     )
 
                     Text(
@@ -261,7 +262,7 @@ fun StudyScreen(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
-                        .size(64.dp) // Increased size to 64.dp
+                        .size(84.dp)
                         .clickable {
                             mediaPlayerArrow.start()
                             scope.launch {
